@@ -1,0 +1,78 @@
+services:
+  secure-app:
+    build: .
+    image: rsa-demo-java:local
+    container_name: rsa-demo-secure-app
+    environment:
+      APP_MODE: secure
+      SERVICE_NAME: secure-app
+      LOG_FILE: /logs/events.jsonl
+      RSA_KEY_BITS: "3072"
+      MAX_CRYPTO_OPS_PER_MIN: "120"
+      HTTP_THREADS: "8"
+    ports:
+      - "8080:8080"
+    volumes:
+      - demo-logs:/logs
+
+  vulnerable-app:
+    image: rsa-demo-java:local
+    container_name: rsa-demo-vulnerable-app
+    environment:
+      APP_MODE: vulnerable
+      SERVICE_NAME: vulnerable-app
+      LOG_FILE: /logs/events.jsonl
+      RSA_KEY_BITS: "2048"
+      TOY_SECRET: "RSA42"
+      HTTP_THREADS: "8"
+    ports:
+      - "8081:8080"
+    volumes:
+      - demo-logs:/logs
+
+  dashboard:
+    image: rsa-demo-java:local
+    depends_on:
+      - secure-app
+      - vulnerable-app
+    environment:
+      SERVICE_NAME: dashboard
+      LOG_FILE: /logs/events.jsonl
+      DASHBOARD_PORT: "8090"
+      DASHBOARD_INITIAL_EVENTS: "5000"
+    ports:
+      - "8090:8090"
+    volumes:
+      - demo-logs:/logs
+    command: ["java", "-cp", "/app/out", "demo.DashboardApp"]
+
+  signature-attack-demo:
+    image: rsa-demo-java:local
+    profiles: ["attack"]
+    depends_on:
+      - secure-app
+      - vulnerable-app
+    environment:
+      SERVICE_NAME: signature-attack-demo
+      LOG_FILE: /logs/events.jsonl
+      VULNERABLE_URL: http://vulnerable-app:8080
+      SECURE_URL: http://secure-app:8080
+    volumes:
+      - demo-logs:/logs
+    command: ["java", "-cp", "/app/out", "demo.AttackClient", "signature-attack"]
+
+  weak-rsa-demo:
+    image: rsa-demo-java:local
+    profiles: ["attack"]
+    depends_on:
+      - vulnerable-app
+    environment:
+      SERVICE_NAME: weak-rsa-demo
+      LOG_FILE: /logs/events.jsonl
+      VULNERABLE_URL: http://vulnerable-app:8080
+    volumes:
+      - demo-logs:/logs
+    command: ["java", "-cp", "/app/out", "demo.AttackClient", "rsa-weak-key-attack"]
+
+volumes:
+  demo-logs:

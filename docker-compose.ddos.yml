@@ -1,0 +1,54 @@
+services:
+  secure-app:
+    build: .
+    image: rsa-demo-java:local
+    container_name: rsa-demo-secure-app
+    environment:
+      APP_MODE: secure
+      SERVICE_NAME: secure-app
+      LOG_FILE: /logs/events.jsonl
+      RSA_KEY_BITS: "3072"
+      MAX_CRYPTO_OPS_PER_MIN: "40"
+      HTTP_THREADS: "8"
+    ports:
+      - "8080:8080"
+    volumes:
+      - demo-logs:/logs
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 384M
+
+  dashboard:
+    image: rsa-demo-java:local
+    depends_on:
+      - secure-app
+    environment:
+      SERVICE_NAME: dashboard
+      LOG_FILE: /logs/events.jsonl
+      DASHBOARD_PORT: "8090"
+      DASHBOARD_INITIAL_EVENTS: "5000"
+    ports:
+      - "8090:8090"
+    volumes:
+      - demo-logs:/logs
+    command: ["java", "-cp", "/app/out", "demo.DashboardApp"]
+
+  bounded-load-demo:
+    image: rsa-demo-java:local
+    profiles: ["ddos"]
+    depends_on:
+      - secure-app
+    environment:
+      SERVICE_NAME: bounded-load-demo
+      LOG_FILE: /logs/events.jsonl
+      TARGET_URL: http://secure-app:8080
+      TOTAL_REQUESTS: "90"
+      CONCURRENCY: "6"
+    volumes:
+      - demo-logs:/logs
+    command: ["java", "-cp", "/app/out", "demo.AttackClient", "ddos-demo"]
+
+volumes:
+  demo-logs:

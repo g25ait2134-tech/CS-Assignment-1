@@ -27,6 +27,7 @@ public final class AttackClient {
         String mode = args.length == 0 ? env("ATTACK_MODE", "normal-secure") : args[0];
         switch (mode) {
             case "normal-secure" -> normalSecure();
+            case "secure-rejection-demo" -> secureRejectionDemo();
             case "signature-attack" -> signatureAttack();
             case "rsa-weak-key-attack" -> rsaWeakKeyAttack();
             case "ddos-demo" -> ddosDemo();
@@ -55,6 +56,42 @@ public final class AttackClient {
         Response tokenVerify = post(target + "/token/verify", DemoJson.object("token", issuedToken));
         log("secure_token_verify_response", "status", tokenVerify.status, "body", tokenVerify.body);
         log("normal_secure_complete", "result", "encryption_signature_token_paths_ok");
+    }
+
+    private static void secureRejectionDemo() throws Exception {
+        String target = env("TARGET_URL", "http://localhost:8080");
+        requireLocalTarget(target);
+        log("secure_rejection_demo_start", "target", target);
+
+        Response signed = post(target + "/secure/sign", DemoJson.object("payload", "transfer=100&to=alice"));
+        String signature = DemoJson.parseFlat(signed.body).getOrDefault("signature", "");
+
+        Response wrongPayload = post(target + "/secure/verify",
+                DemoJson.object("payload", "transfer=9000&to=mallory", "signature", signature));
+        log("secure_reject_wrong_payload_signature", "status", wrongPayload.status, "body", wrongPayload.body,
+                "expected", "401_invalid_signature");
+
+        Response corruptSignature = post(target + "/secure/verify",
+                DemoJson.object("payload", "transfer=100&to=alice", "signature", flipLastBase64Char(signature)));
+        log("secure_reject_corrupt_signature", "status", corruptSignature.status, "body", corruptSignature.body,
+                "expected", "401_or_400_invalid_signature");
+
+        Response issued = post(target + "/token/issue", DemoJson.object("sub", "alice", "role", "user"));
+        String validToken = DemoJson.parseFlat(issued.body).getOrDefault("token", "");
+
+        Response tamperedPayload = post(target + "/token/verify", DemoJson.object("token", tamperTokenPayload(validToken)));
+        log("secure_reject_tampered_token_payload", "status", tamperedPayload.status, "body", tamperedPayload.body,
+                "expected", "401_signature_mismatch");
+
+        Response algNone = post(target + "/token/verify", DemoJson.object("token", unsignedAdminToken()));
+        log("secure_reject_unsigned_alg_none_token", "status", algNone.status, "body", algNone.body,
+                "expected", "401_alg_not_allowed");
+
+        Response malformed = post(target + "/token/verify", DemoJson.object("token", "not-a-jwt"));
+        log("secure_reject_malformed_token", "status", malformed.status, "body", malformed.body,
+                "expected", "400_bad_token_shape");
+
+        log("secure_rejection_demo_complete", "result", "secure_app_rejected_invalid_signature_and_tokens");
     }
 
     private static void signatureAttack() throws Exception {
@@ -171,6 +208,32 @@ public final class AttackClient {
 
     private static String b64Url(byte[] bytes) {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    private static String flipLastBase64Char(String value) {
+        if (value == null || value.isBlank()) {
+            return "AA";
+        }
+        char last = value.charAt(value.length() - 1);
+        char replacement = last == 'A' ? 'B' : 'A';
+        return value.substring(0, value.length() - 1) + replacement;
+    }
+
+    private static String tamperTokenPayload(String token) {
+        String[] parts = token.split("\\.", -1);
+        if (parts.length != 3) {
+            return token;
+        }
+        String payload = b64Url(DemoJson.object("sub", "alice", "role", "admin", "iat", Instant.now().toString())
+                .getBytes(StandardCharsets.UTF_8));
+        return parts[0] + "." + payload + "." + parts[2];
+    }
+
+    private static String unsignedAdminToken() {
+        String header = b64Url(DemoJson.object("alg", "none", "typ", "JWT").getBytes(StandardCharsets.UTF_8));
+        String payload = b64Url(DemoJson.object("sub", "mallory", "role", "admin", "iat", Instant.now().toString())
+                .getBytes(StandardCharsets.UTF_8));
+        return header + "." + payload + ".";
     }
 
     private static byte[] unsignedBytes(BigInteger value) {

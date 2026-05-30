@@ -43,5 +43,18 @@ services:
       - demo-logs:/logs
     command: ["java", "-cp", "/app/out", "demo.AttackClient", "normal-secure"]
 
+  secure-rejection-demo:
+    image: rsa-demo-java:local
+    profiles: ["demo"]
+    depends_on:
+      - secure-app
+    environment:
+      SERVICE_NAME: secure-rejection-demo
+      LOG_FILE: /logs/events.jsonl
+      TARGET_URL: http://secure-app:8080
+    volumes:
+      - demo-logs:/logs
+    command: ["java", "-cp", "/app/out", "demo.AttackClient", "secure-rejection-demo"]
+
 volumes:
   demo-logs:

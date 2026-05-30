@@ -19,17 +19,44 @@ The dashboard also requests up to 5,000 existing lines from `/logs/events.jsonl`
 DASHBOARD_INITIAL_EVENTS: "5000"
 ```
 
+Old metrics can reappear after restart because Docker keeps the `demo-logs` named volume. To clear them, click `Reset Dashboard` in the top header or `Clear Metrics` in the log panel or stop the stack with volumes:
+
+```bash
+docker compose -f docker-compose.ddos.yml down -v
+```
+
+Use the matching compose file for the secure or attack stack if that is the one you are running.
+
+## Code Walkthrough PDF
+
+The detailed explanation is available at:
+
+```text
+docs/RSA_Demo_Code_Guide.pdf
+```
+
 ## Secure Demo
 
 ```bash
 docker compose -f docker-compose.secure.yml up --build secure-app dashboard
 docker compose -f docker-compose.secure.yml --profile demo run --rm normal-demo
+docker compose -f docker-compose.secure.yml --profile demo run --rm secure-rejection-demo
 ```
+
+The rejection demo sends invalid signatures and invalid tokens to the secure app. In the dashboard, look for:
+
+- `secure_reject_wrong_payload_signature`
+- `secure_reject_corrupt_signature`
+- `secure_reject_tampered_token_payload`
+- `secure_reject_unsigned_alg_none_token`
+- `secure_reject_malformed_token`
+- server-side `token_verify_reject`
 
 ## Attack Demo
 
 ```bash
 docker compose -f docker-compose.attack.yml up --build secure-app vulnerable-app dashboard
+docker compose -f docker-compose.attack.yml --profile attack run --rm secure-rejection-demo
 docker compose -f docker-compose.attack.yml --profile attack run --rm signature-attack-demo
 docker compose -f docker-compose.attack.yml --profile attack run --rm weak-rsa-demo
 ```

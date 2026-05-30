@@ -13,4 +13,4 @@ Configuration:
 - `DASHBOARD_PORT`: defaults to `8090`.
 - `DASHBOARD_INITIAL_EVENTS`: defaults to `5000`.
 
-The browser stores up to 5,000 events and renders the log table inside a scrollable pane. The `Follow Live` button controls whether the pane auto-scrolls to the newest log or lets the presenter inspect older events during load bursts.
+The browser stores up to 5,000 events and renders the log table inside a scrollable pane. The `Follow Live` button controls whether the pane auto-scrolls to the newest log or allows manual inspection of older events during load bursts.

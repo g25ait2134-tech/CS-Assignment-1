@@ -36,6 +36,7 @@ public final class DashboardApp {
         HttpServer server = HttpServer.create(new InetSocketAddress("0.0.0.0", port), 0);
         server.createContext("/", app::index);
         server.createContext("/events", app::events);
+        server.createContext("/clear", app::clear);
         server.setExecutor(Executors.newCachedThreadPool());
         server.start();
         DemoLog.log("dashboard_started", "port", port, "logFile", logFile.toString(),
@@ -45,6 +46,7 @@ public final class DashboardApp {
     private void index(HttpExchange exchange) throws IOException {
         byte[] bytes = HTML.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("content-type", "text/html; charset=utf-8");
+        exchange.getResponseHeaders().set("cache-control", "no-store, max-age=0");
         exchange.sendResponseHeaders(200, bytes.length);
         exchange.getResponseBody().write(bytes);
         exchange.close();
@@ -62,6 +64,9 @@ public final class DashboardApp {
             try (RandomAccessFile file = new RandomAccessFile(logFile.toFile(), "r")) {
                 file.seek(file.length());
                 while (true) {
+                    if (file.length() < file.getFilePointer()) {
+                        file.seek(file.length());
+                    }
                     String line = file.readLine();
                     if (line == null) {
                         sleep(350);
@@ -73,6 +78,21 @@ public final class DashboardApp {
         } catch (IOException ignored) {
             exchange.close();
         }
+    }
+
+    private void clear(HttpExchange exchange) throws IOException {
+        if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+            exchange.sendResponseHeaders(405, -1);
+            exchange.close();
+            return;
+        }
+        Files.writeString(logFile, "", StandardCharsets.UTF_8);
+        DemoLog.log("dashboard_metrics_cleared", "logFile", logFile.toString());
+        byte[] bytes = DemoJson.object("cleared", true).getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("content-type", "application/json; charset=utf-8");
+        exchange.sendResponseHeaders(200, bytes.length);
+        exchange.getResponseBody().write(bytes);
+        exchange.close();
     }
 
     private List<String> tailLines(int maxLines) throws IOException {
@@ -125,6 +145,7 @@ public final class DashboardApp {
                 body { margin:0; font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:var(--bg); color:var(--ink); }
                 header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 20px; border-bottom:1px solid var(--line); background:var(--panel); position:sticky; top:0; z-index:2; }
                 h1 { margin:0; font-size:20px; font-weight:700; letter-spacing:0; }
+                .top-actions { display:flex; align-items:center; gap:10px; }
                 .status { display:flex; align-items:center; gap:8px; color:var(--muted); font-size:13px; }
                 .dot { width:10px; height:10px; border-radius:50%; background:var(--amber); }
                 .dot.live { background:var(--green); }
@@ -140,6 +161,7 @@ public final class DashboardApp {
                 .panel h2 { margin:0; font-size:14px; }
                 button { border:1px solid var(--line); border-radius:6px; background:#fbfcfe; color:var(--ink); padding:6px 10px; cursor:pointer; }
                 button.active { border-color:var(--blue); color:var(--blue); font-weight:700; }
+                button.danger { border-color:var(--red); color:var(--red); font-weight:700; }
                 canvas { width:100%; height:230px; display:block; border:1px solid var(--line); border-radius:6px; background:#fbfcfe; }
                 .log-wrap { max-height:440px; overflow:auto; border:1px solid var(--line); border-radius:6px; }
                 table { width:100%; border-collapse:collapse; font-size:12px; }
@@ -154,7 +176,10 @@ public final class DashboardApp {
             <body>
               <header>
                 <h1>RSA Demo Dashboard</h1>
-                <div class="status"><span id="dot" class="dot"></span><span id="conn">connecting</span></div>
+                <div class="top-actions">
+                  <button id="clearTop" class="danger" type="button">Reset Dashboard</button>
+                  <div class="status"><span id="dot" class="dot"></span><span id="conn">connecting</span></div>
+                </div>
               </header>
               <main>
                 <section class="metrics">
@@ -172,7 +197,7 @@ public final class DashboardApp {
                 <section class="panel">
                   <div class="panel-head">
                     <div><h2>Scrollable JSON Log History</h2><div class="hint">Keeps up to 5,000 events. Scroll inside this pane to inspect earlier events after load bursts.</div></div>
-                    <button id="follow" class="active" type="button">Follow Live</button>
+                    <div><button id="clear" type="button">Clear Metrics</button> <button id="follow" class="active" type="button">Follow Live</button></div>
                   </div>
                   <div id="logWrap" class="log-wrap">
                     <table>
@@ -194,9 +219,23 @@ public final class DashboardApp {
                 const rows = document.getElementById('rows');
                 const logWrap = document.getElementById('logWrap');
                 const follow = document.getElementById('follow');
+                const clearButton = document.getElementById('clear');
+                const clearTop = document.getElementById('clearTop');
                 const dot = document.getElementById('dot');
                 const conn = document.getElementById('conn');
 
+                async function clearMetrics() {
+                  await fetch('/clear', { method: 'POST' });
+                  received = 0;
+                  dropped = 0;
+                  events.length = 0;
+                  latency.length = 0;
+                  statuses.clear();
+                  rows.replaceChildren();
+                  render();
+                }
+                clearButton.onclick = clearMetrics;
+                clearTop.onclick = clearMetrics;
                 follow.onclick = () => {
                   followLive = !followLive;
                   follow.classList.toggle('active', followLive);
@@ -284,7 +323,7 @@ public final class DashboardApp {
                 function drawLatency() {
                   const canvas = document.getElementById('latency');
                   const ctx = canvas.getContext('2d');
-                  clear(ctx, canvas);
+                  clearCanvas(ctx, canvas);
                   const max = Math.max(5, ...latency.map((x) => x.value));
                   const w = canvas.width, h = canvas.height, pad = 28;
                   axis(ctx, w, h, pad);
@@ -306,7 +345,7 @@ public final class DashboardApp {
                 function drawStatus() {
                   const canvas = document.getElementById('status');
                   const ctx = canvas.getContext('2d');
-                  clear(ctx, canvas);
+                  clearCanvas(ctx, canvas);
                   const items = Array.from(statuses.entries()).sort(([a], [b]) => Number(a) - Number(b));
                   const max = Math.max(1, ...items.map(([, count]) => count));
                   const w = canvas.width, h = canvas.height, pad = 28;
@@ -325,7 +364,7 @@ public final class DashboardApp {
                   });
                 }
 
-                function clear(ctx, canvas) { ctx.clearRect(0, 0, canvas.width, canvas.height); }
+                function clearCanvas(ctx, canvas) { ctx.clearRect(0, 0, canvas.width, canvas.height); }
                 function axis(ctx, w, h, pad) {
                   ctx.strokeStyle = '#d9dee7';
                   ctx.beginPath();

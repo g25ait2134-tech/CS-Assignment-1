@@ -2,7 +2,7 @@
 
 ## Goal
 
-Demonstrate secure RSA encryption and signature flows first, then show controlled local attack scenarios against common RSA misuse patterns. The demo is intentionally split into secure and vulnerable modes so the audience can compare logs and outcomes side by side.
+Demonstrate secure RSA encryption and signature flows first, then show controlled local attack scenarios against common RSA misuse patterns. The implementation is split into secure and vulnerable modes so logs and outcomes can be compared side by side.
 
 ## Scope
 
@@ -23,7 +23,7 @@ Demonstrate secure RSA encryption and signature flows first, then show controlle
 
 ```mermaid
 flowchart LR
-    Presenter["Presenter / Demo Runner"] --> Compose["Docker Compose"]
+    Operator["Demo Runner"] --> Compose["Docker Compose"]
     Compose --> Secure["secure-app<br/>RSA-OAEP + RSASSA-PSS"]
     Compose --> Vulnerable["vulnerable-app<br/>Toy RSA + alg=none verifier"]
     Compose --> Attacker["demo attacker client<br/>local-only guardrails"]
@@ -74,7 +74,7 @@ The dashboard charts:
 - `latencyMs` values from secure crypto operations.
 - HTTP status counts from demo-client responses.
 - `status200` and `status429` aggregates from the bounded-load demo.
-- Recent raw JSON logs for explanation during calls.
+- Recent raw JSON logs for analysis and troubleshooting.
 
 ## Mitigations Demonstrated
 

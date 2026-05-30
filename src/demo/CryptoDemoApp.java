@@ -184,6 +184,8 @@ public final class CryptoDemoApp {
             String token = body(exchange).getOrDefault("token", "");
             String[] parts = token.split("\\.", -1);
             if (parts.length != 3) {
+                log("token_verify_reject", "requestId", requestId, "reason", "bad_token_shape",
+                        "latencyMs", elapsedMs(start));
                 json(exchange, 400, DemoJson.object("error", "bad_token_shape"));
                 return;
             }
@@ -204,7 +206,10 @@ public final class CryptoDemoApp {
             }
             boolean valid = verifyPss((parts[0] + "." + parts[1]).getBytes(StandardCharsets.US_ASCII),
                     Base64.getUrlDecoder().decode(parts[2]));
-            log("token_verify_done", "requestId", requestId, "algorithm", "PS256", "valid", valid, "latencyMs", elapsedMs(start));
+            log(valid ? "token_verify_done" : "token_verify_reject", "requestId", requestId,
+                    "algorithm", "PS256", "valid", valid,
+                    "reason", valid ? "signature_valid" : "signature_mismatch",
+                    "latencyMs", elapsedMs(start));
             json(exchange, valid ? 200 : 401, DemoJson.object("valid", valid, "payload", valid ? payloadJson : ""));
         } catch (Exception e) {
             log("token_verify_error", "requestId", requestId, "error", e.getClass().getSimpleName());
